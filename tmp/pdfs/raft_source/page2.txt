@@ -1,0 +1,60 @@
+                                                              tency of the logs: faulty clocks and extreme message
+                                                              delays can, at worst, cause availability problems.
+                                                    • In the common case, a command can complete as
+                                                        soon as a majority of the cluster has responded to a
+                                                                   single round of remote procedure calls; a minority of
+                                                         slow servers need not impact overall system perfor-
+                                                        mance.
+
+                                         3  What’s wrong with Paxos?
+                                                    Over the last ten years, Leslie Lamport’s Paxos proto-
+ Figure 1: Replicated state machine architecture. The con-      col [15] has become almost synonymous with consensus:
+ sensus algorithm manages a replicated log containing state                                                                                         it is the protocol most commonly taught in courses, and
+ machine commands from clients. The state machines process
+                                                   most implementations of consensus use it as a starting
+ identical sequences of commands from the logs, so they pro-
+                                                                point. Paxos ﬁrst deﬁnes a protocol capable of reaching duce the same outputs.
+                                                     agreement on a single decision, such as a single replicated
+used to solve a variety of fault tolerance problems in dis-    log entry. We refer to this subset as single-decree Paxos.
+tributed systems. For example, large-scale systems that    Paxos then combines multiple instances of this protocol to
+have a single cluster leader, such as GFS [8], HDFS [38],     facilitate a series of decisions such as a log (multi-Paxos).
+and RAMCloud [33], typically use a separate replicated    Paxos ensures both safety and liveness, and it supports
+state machine to manage leader election and store conﬁg-    changes in cluster membership. Its correctness has been
+uration information that must survive leader crashes. Ex-    proven, and it is efﬁcient in the normal case.
+amples of replicated state machines include Chubby [2]                                                              Unfortunately, Paxos has two signiﬁcant drawbacks.
+and ZooKeeper [11].                                               The ﬁrst drawback is that Paxos is exceptionally difﬁ-
+  Replicated state machines are typically implemented     cult to understand. The full explanation [15] is notori-
+using a replicated log, as shown in Figure 1. Each server    ously opaque; few people succeed in understanding it, and
+stores a log containing a series of commands, which its    only with great effort. As a result, there have been several
+state machine executes in order. Each log contains the    attempts to explain Paxos in simpler terms [16, 20, 21].
+same commands in the same order, so each state ma-    These explanations focus on the single-decree subset, yet
+chine processes the same sequence of commands. Since    they are still challenging. In an informal survey of atten-
+the state machines are deterministic, each computes the    dees at NSDI 2012, we found few people who were com-
+same state and the same sequence of outputs.                 fortable with Paxos, even among seasoned researchers.
+  Keeping the replicated log consistent is the job of the   We struggled with Paxos ourselves; we were not able to
+consensus algorithm. The consensus module on a server    understand the complete protocol until after reading sev-
+receives commands from clients and adds them to its log.     eral simpliﬁed explanations and designing our own alter-
+It communicates with the consensus modules on other    native protocol, a process that took almost a year.
+servers to ensure that every log eventually contains the    We hypothesize that Paxos’ opaqueness derives from
+same requests in the same order, even if some servers fail.      its choice of the single-decree subset as its foundation.
+Once commands are properly replicated, each server’s    Single-decree Paxos is dense and subtle: it is divided into
+state machine processes them in log order, and the out-    two stages that do not have simple intuitive explanations
+puts are returned to clients. As a result, the servers appear    and cannot be understood independently. Because of this,
+to form a single, highly reliable state machine.                      it is difﬁcult to develop intuitions about why the single-
+  Consensus algorithms for practical systems typically    decree protocol works. The composition rules for multi-
+have the following properties:                           Paxos add signiﬁcant additional complexity and subtlety.
+  • They ensure safety (never returning an incorrect re-   We believe that the overall problem of reaching consensus
+      sult) under all non-Byzantine conditions, including    on multiple decisions (i.e., a log instead of a single entry)
+    network delays, partitions, and packet loss, duplica-    can be decomposed in other ways that are more direct and
+      tion, and reordering.                                  obvious.
+  • They are fully functional (available) as long as any     The second problem with Paxos is that it does not pro-
+     majority of the servers are operational and can com-    vide a good foundation for building practical implemen-
+    municate with each other and with clients. Thus, a     tations. One reason is that there is no widely agreed-
+     typical cluster of ﬁve servers can tolerate the failure    upon algorithm for multi-Paxos. Lamport’s descriptions
+     of any two servers. Servers are assumed to fail by    are mostly about single-decree Paxos; he sketched possi-
+     stopping; they may later recover from state on stable    ble approaches to multi-Paxos, but many details are miss-
+     storage and rejoin the cluster.                             ing. There have been several attempts to ﬂesh out and op-
+  • They do not depend on timing to ensure the consis-    timize Paxos, such as [26], [39], and [13], but these differ
+
+
+                                               2

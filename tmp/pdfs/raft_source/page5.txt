@@ -1,0 +1,74 @@
+ Election Safety:  at most one leader can be elected in a
+       given term. §5.2
+ Leader Append-Only: a leader never overwrites or deletes
+        entries in its log; it only appends new entries. §5.3
+ Log Matching:  if two logs contain an entry with the same
+       index and term, then the logs are identical in all entries
+      up through the given index. §5.3
+ Leader Completeness:  if a log entry  is committed in a       Figure 4: Server states. Followers only respond to requests
+       given term, then that entry will be present in the logs       from other servers. If a follower receives no communication,
+       of the leaders for all higher-numbered terms. §5.4                   it becomes a candidate and initiates an election. A candidate
+  State Machine Safety:  if a server has applied a log entry         that receives votes from a majority of the full cluster becomes
+        at a given index to its state machine, no other server        the new leader. Leaders typically operate until they fail.
+       will ever apply a different log entry for the same index.
+       §5.4.3
+
+ Figure 3: Raft guarantees that each of these properties is true
+  at all times. The section numbers indicate where each prop-
+ erty is discussed.
+
+    from clients and replicate them across the cluster,
+     forcing the other logs to agree with its own (Sec-
+                                                            Figure 5: Time is divided into terms, and each term begins
+     tion 5.3).                                                               with an election. After a successful election, a single leader
+  • Safety: the key safety property for Raft is the State                                                        manages the cluster until the end of the term. Some elections
+    Machine Safety Property in Figure 3: if any server        fail, in which case the term ends without choosing a leader.
+    has applied a particular log entry to its state machine,     The transitions between terms may be observed at different
+     then no other server may apply a different command      times on different servers.
+     for the same log index. Section 5.4 describes how
+                                                                will begin shortly. Raft ensures that there is at most one
+     Raft ensures this property; the solution involves an
+                                                             leader in a given term.
+     additional restriction on the election mechanism de-
+                                                               Different servers may observe the transitions between
+     scribed in Section 5.2.
+                                                       terms at different times, and in some situations a server
+After presenting the consensus algorithm, this section dis-                                           may not observe an election or even entire terms. Terms
+cusses the issue of availability and the role of timing in the                                                                act as a logical clock [14] in Raft, and they allow servers
+system.                                                                to detect obsolete information such as stale leaders. Each
+5.1  Raft basics                                            server stores a current term number, which increases
+                                                       monotonically over time. Current terms are exchanged
+ A Raft cluster contains several servers; ﬁve is a typical
+                                                   whenever servers communicate; if one server’s current
+number, which allows the system to tolerate two failures.
+                                                      term is smaller than the other’s, then it updates its current
+At any given time each server is in one of three states:
+                                                      term to the larger value. If a candidate or leader discovers
+leader, follower, or candidate. In normal operation there
+                                                                  that its term is out of date, it immediately reverts to fol-
+is exactly one leader and all of the other servers are fol-
+                                                       lower state. If a server receives a request with a stale term
+lowers. Followers are passive: they issue no requests on
+                                                     number, it rejects the request.
+their own but simply respond to requests from leaders
+                                                            Raft servers communicate using remote procedure callsand candidates. The leader handles all client requests (if
+                                                      (RPCs), and the basic consensus algorithm requires onlya client contacts a follower, the follower redirects it to the
+                                                  two types of RPCs. RequestVote RPCs are initiated byleader). The third state, candidate, is used to elect a new
+                                                          candidates during elections (Section 5.2), and Append-leader as described in Section 5.2. Figure 4 shows the
+                                                             Entries RPCs are initiated by leaders to replicate log en-states and their transitions; the transitions are discussed
+                                                                        tries and to provide a form of heartbeat (Section 5.3). Sec-below.
+                                                               tion 7 adds a third RPC for transferring snapshots between
+  Raft divides time into terms of arbitrary length, as
+                                                                servers. Servers retry RPCs if they do not receive a re-
+shown in Figure 5. Terms are numbered with consecutive
+                                                      sponse in a timely manner, and they issue RPCs in parallel
+integers. Each term begins with an election, in which one
+                                                               for best performance.
+or more candidates attempt to become leader as described
+in Section 5.2. If a candidate wins the election, then it    5.2  Leader election
+serves as leader for the rest of the term. In some situations      Raft uses a heartbeat mechanism to trigger leader elec-
+an election will result in a split vote. In this case the term     tion. When servers start up, they begin as followers. A
+will end with no leader; a new term (with a new election)    server remains in follower state as long as it receives valid
+
+
+                                               5
